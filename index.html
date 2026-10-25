@@ -1,0 +1,526 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<title>🐧 ペンギンシューティングDX</title>
+
+<style>
+*{
+    box-sizing:border-box;
+    margin:0;
+    padding:0;
+    -webkit-tap-highlight-color:transparent;
+}
+
+html,body{
+    width:100%;
+    height:100%;
+    overflow:hidden;
+    touch-action:none;
+    font-family:sans-serif;
+    user-select:none;
+}
+
+body{
+    background:
+    radial-gradient(circle at 20% 20%, rgba(255,255,255,.4), transparent 25%),
+    radial-gradient(circle at 80% 30%, rgba(255,255,255,.3), transparent 20%),
+    linear-gradient(180deg,#1b4965,#4ea8de,#bde0fe);
+}
+
+.screen{
+    position:absolute;
+    inset:0;
+    display:flex;
+    justify-content:center;
+    align-items:center;
+    padding:20px;
+    text-align:center;
+}
+
+.hidden{
+    display:none;
+}
+
+.card{
+    width:100%;
+    max-width:520px;
+    background:rgba(255,255,255,.15);
+    backdrop-filter:blur(12px);
+    border:1px solid rgba(255,255,255,.3);
+    border-radius:24px;
+    padding:24px;
+    color:#fff;
+    box-shadow:0 10px 30px rgba(0,0,0,.2);
+}
+
+h1{
+    font-size:clamp(32px,8vw,52px);
+    margin-bottom:12px;
+}
+
+.desc{
+    line-height:1.8;
+    font-size:18px;
+}
+
+button{
+    border:none;
+    border-radius:18px;
+    background:linear-gradient(45deg,#ffb703,#fb8500);
+    color:#fff;
+    font-size:22px;
+    font-weight:bold;
+    min-width:220px;
+    min-height:70px;
+    margin-top:20px;
+}
+
+#gameScreen{
+    overflow:hidden;
+}
+
+#gameArea{
+    position:absolute;
+    inset:0;
+    overflow:hidden;
+}
+
+#hud{
+    position:absolute;
+    top:0;
+    left:0;
+    right:0;
+    z-index:20;
+    padding:12px;
+    display:flex;
+    justify-content:space-between;
+    color:#fff;
+    font-size:18px;
+    font-weight:bold;
+    text-shadow:0 2px 4px rgba(0,0,0,.5);
+}
+
+#specialWrap{
+    position:absolute;
+    bottom:10px;
+    right:10px;
+    z-index:30;
+}
+
+#specialBtn{
+    width:90px;
+    height:90px;
+    min-width:90px;
+    min-height:90px;
+    margin:0;
+    border-radius:50%;
+    background:linear-gradient(45deg,#ff006e,#8338ec);
+    font-size:14px;
+}
+
+.entity{
+    position:absolute;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    pointer-events:none;
+}
+
+.snow{
+    position:absolute;
+    color:white;
+    opacity:.8;
+    animation:snowFall linear infinite;
+}
+
+@keyframes snowFall{
+    from{
+        transform:translateY(-10vh);
+    }
+    to{
+        transform:translateY(110vh);
+    }
+}
+
+#effect{
+    position:absolute;
+    left:50%;
+    top:45%;
+    transform:translate(-50%,-50%);
+    font-size:34px;
+    color:#fff;
+    text-shadow:0 0 20px gold;
+    z-index:50;
+    pointer-events:none;
+}
+</style>
+</head>
+<body>
+
+<div id="startScreen" class="screen">
+    <div class="card">
+        <h1>🐧 ペンギンシューティングDX</h1>
+
+        <div class="desc">
+            魚を雪玉でやっつけよう！<br>
+            ペンギンを左右にドラッグ！<br>
+            雪玉は自動発射！<br>
+            スペシャル攻撃で一気に魚をふっとばそう！<br>
+            制限時間30秒！
+        </div>
+
+        <button id="startBtn">スタート</button>
+    </div>
+</div>
+
+<div id="gameScreen" class="hidden">
+
+    <div id="hud">
+        <div>スコア: <span id="score">0</span></div>
+        <div>残り: <span id="time">30</span>秒</div>
+    </div>
+
+    <div id="gameArea"></div>
+
+    <div id="specialWrap">
+        <button id="specialBtn">
+            ❄️💥<br>
+            SP
+        </button>
+    </div>
+
+    <div id="effect"></div>
+</div>
+
+<div id="resultScreen" class="screen hidden">
+    <div class="card">
+        <h1>🏆 結果発表</h1>
+
+        <p style="font-size:28px;margin:15px 0;">
+            スコア:
+            <span id="finalScore">0</span>
+        </p>
+
+        <p style="font-size:32px;margin:15px 0;">
+            ランク:
+            <span id="rank">C</span>
+        </p>
+
+        <button id="retryBtn">もう一度遊ぶ</button>
+    </div>
+</div>
+
+<script>
+const startScreen=document.getElementById("startScreen");
+const gameScreen=document.getElementById("gameScreen");
+const resultScreen=document.getElementById("resultScreen");
+const gameArea=document.getElementById("gameArea");
+
+const scoreEl=document.getElementById("score");
+const timeEl=document.getElementById("time");
+const finalScoreEl=document.getElementById("finalScore");
+const rankEl=document.getElementById("rank");
+const effectEl=document.getElementById("effect");
+
+let score=0;
+let timeLeft=30;
+
+let player;
+let playerX=0;
+
+let bullets=[];
+let enemies=[];
+
+let running=false;
+
+let animationId;
+let shootTimer;
+let enemyTimer;
+let gameTimer;
+
+let specialReady=true;
+
+function createSnow(){
+    for(let i=0;i<25;i++){
+        const s=document.createElement("div");
+        s.className="snow";
+        s.textContent="❄";
+        s.style.left=Math.random()*100+"%";
+        s.style.fontSize=(10+Math.random()*20)+"px";
+        s.style.animationDuration=(6+Math.random()*8)+"s";
+        s.style.animationDelay=(-Math.random()*10)+"s";
+        gameArea.appendChild(s);
+    }
+}
+
+function createPlayer(){
+    player=document.createElement("div");
+
+    player.className="entity";
+    player.textContent="🐧";
+
+    player.style.fontSize="58px";
+    player.style.width="60px";
+    player.style.height="60px";
+    player.style.bottom="12px";
+
+    gameArea.appendChild(player);
+
+    playerX=window.innerWidth/2-30;
+    updatePlayer();
+}
+
+function updatePlayer(){
+    player.style.left=playerX+"px";
+}
+
+function createBullet(){
+
+    if(!running)return;
+
+    const b=document.createElement("div");
+
+    b.className="entity";
+    b.textContent="❄️";
+    b.style.fontSize="24px";
+
+    gameArea.appendChild(b);
+
+    bullets.push({
+        el:b,
+        x:playerX+18,
+        y:window.innerHeight-100,
+        w:24,
+        h:24
+    });
+}
+
+function createEnemy(){
+
+    if(!running)return;
+
+    const types=["🐟","🐠","🐡"];
+
+    const e=document.createElement("div");
+
+    e.className="entity";
+    e.textContent=types[Math.floor(Math.random()*types.length)];
+    e.style.fontSize="44px";
+
+    gameArea.appendChild(e);
+
+    enemies.push({
+        el:e,
+        x:Math.random()*(window.innerWidth-50),
+        y:-60,
+        w:44,
+        h:44,
+        speed:2+Math.random()*2.5
+    });
+}
+
+function specialAttack(){
+
+    if(!running)return;
+    if(!specialReady)return;
+
+    specialReady=false;
+
+    document.getElementById("specialBtn").style.opacity=".4";
+
+    effectEl.textContent="❄️💥 スペシャル！";
+
+    let bonus=0;
+
+    enemies.forEach(enemy=>{
+        enemy.el.remove();
+        bonus+=15;
+    });
+
+    enemies=[];
+
+    score+=bonus;
+
+    scoreEl.textContent=score;
+
+    setTimeout(()=>{
+        effectEl.textContent="";
+    },1200);
+
+    setTimeout(()=>{
+        specialReady=true;
+        document.getElementById("specialBtn").style.opacity="1";
+    },8000);
+}
+
+function loop(){
+
+    if(!running)return;
+
+    for(let i=bullets.length-1;i>=0;i--){
+
+        const b=bullets[i];
+
+        b.y-=9;
+
+        b.el.style.left=b.x+"px";
+        b.el.style.top=b.y+"px";
+
+        if(b.y<-50){
+            b.el.remove();
+            bullets.splice(i,1);
+        }
+    }
+
+    for(let i=enemies.length-1;i>=0;i--){
+
+        const e=enemies[i];
+
+        e.y+=e.speed;
+
+        e.el.style.left=e.x+"px";
+        e.el.style.top=e.y+"px";
+
+        if(e.y>window.innerHeight){
+
+            e.el.remove();
+            enemies.splice(i,1);
+
+            score=Math.max(0,score-2);
+            scoreEl.textContent=score;
+        }
+    }
+
+    for(let ei=enemies.length-1;ei>=0;ei--){
+
+        const e=enemies[ei];
+
+        for(let bi=bullets.length-1;bi>=0;bi--){
+
+            const b=bullets[bi];
+
+            if(
+                b.x<e.x+e.w &&
+                b.x+b.w>e.x &&
+                b.y<e.y+e.h &&
+                b.y+b.h>e.y
+            ){
+
+                e.el.remove();
+                b.el.remove();
+
+                enemies.splice(ei,1);
+                bullets.splice(bi,1);
+
+                score+=10;
+                scoreEl.textContent=score;
+
+                break;
+            }
+        }
+    }
+
+    animationId=requestAnimationFrame(loop);
+}
+
+function getRank(s){
+
+    if(s>=400)return "S";
+    if(s>=250)return "A";
+    if(s>=150)return "B";
+    return "C";
+}
+
+function endGame(){
+
+    running=false;
+
+    cancelAnimationFrame(animationId);
+
+    clearInterval(shootTimer);
+    clearInterval(enemyTimer);
+    clearInterval(gameTimer);
+
+    finalScoreEl.textContent=score;
+    rankEl.textContent=getRank(score);
+
+    gameScreen.classList.add("hidden");
+    resultScreen.classList.remove("hidden");
+}
+
+function startGame(){
+
+    score=0;
+    timeLeft=30;
+
+    bullets=[];
+    enemies=[];
+
+    gameArea.innerHTML="";
+    effectEl.textContent="";
+
+    createSnow();
+    createPlayer();
+
+    scoreEl.textContent="0";
+    timeEl.textContent="30";
+
+    specialReady=true;
+    document.getElementById("specialBtn").style.opacity="1";
+
+    startScreen.classList.add("hidden");
+    resultScreen.classList.add("hidden");
+    gameScreen.classList.remove("hidden");
+
+    running=true;
+
+    shootTimer=setInterval(createBullet,250);
+    enemyTimer=setInterval(createEnemy,650);
+
+    gameTimer=setInterval(()=>{
+
+        timeLeft--;
+
+        timeEl.textContent=timeLeft;
+
+        if(timeLeft<=0){
+            endGame();
+        }
+
+    },1000);
+
+    loop();
+}
+
+function movePlayer(x){
+
+    playerX=x-30;
+
+    if(playerX<0)playerX=0;
+
+    if(playerX>window.innerWidth-60){
+        playerX=window.innerWidth-60;
+    }
+
+    updatePlayer();
+}
+
+gameArea.addEventListener("pointerdown",e=>{
+    movePlayer(e.clientX);
+});
+
+gameArea.addEventListener("pointermove",e=>{
+    if(running){
+        movePlayer(e.clientX);
+    }
+});
+
+document.getElementById("specialBtn").addEventListener("click",specialAttack);
+document.getElementById("startBtn").addEventListener("click",startGame);
+document.getElementById("retryBtn").addEventListener("click",startGame);
+</script>
+
+</body>
+</html>
